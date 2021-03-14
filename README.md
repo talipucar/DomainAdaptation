@@ -115,6 +115,14 @@ And when training, you can use "-d1, -d2, -d3" arguments to pick the data source
 
 will use new dataset as well as two other synthetic datasets (ds2 and ds3) already provided in the project.
 
+
+Results of t-SNE for 3 synthetic datasets are as shown below (Each has 4 clusters):
+
+Dataset-1                  |  Dataset-2                |  Dataset-3
+:-------------------------:|:-------------------------:|:-------------------------:
+![](./assets/ds1.png)      |  ![](./assets/ds2.png)    |  ![](./assets/ds3.png)
+
+
 # Environment - Installation
 It requires Python 3.7 or 3.8 (Default is 3.7). You can set up the environment by following three steps:
 1. Install pipenv using pip
