@@ -29,7 +29,7 @@ import pandas as pd
 from sklearn.utils import shuffle
 
 from utils.utils import set_seed, set_dirs
-from utils.loss_functions import get_th_vae_loss, getMSEloss, get_generator_loss, get_discriminator_loss
+from utils.loss_functions import get_vae_loss, getMSEloss, get_generator_loss, get_discriminator_loss
 from utils.model_plot import save_loss_plot
 from utils.model_utils import Autoencoder, Discriminator, Classifier
 
@@ -270,7 +270,7 @@ class AEModel:
         # Compute reconstruction loss
         recon_loss = self.recon_loss(Xrecon, Xdata)
         # Add KL loss to compute total loss if we are using variational methods
-        total_loss, kl_loss = get_th_vae_loss(recon_loss, z_mean, z_logvar, self.options)
+        total_loss, kl_loss = get_vae_loss(recon_loss, z_mean, z_logvar, self.options)
         # Record reconstruction loss
         self.loss["rloss_b"].append(recon_loss.item())
         # Record KL loss if we are using variational inference

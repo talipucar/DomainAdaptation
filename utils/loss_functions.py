@@ -10,7 +10,7 @@ import torch as th
 
 
 
-def get_th_vae_loss(recon_loss, mu, logvar, options):
+def get_vae_loss(recon_loss, mu, logvar, options):
     """
     :param recon_loss:
     :param mu:
@@ -19,24 +19,13 @@ def get_th_vae_loss(recon_loss, mu, logvar, options):
     :return:
     """
     kl_loss = 0
-
     if options["model_mode"] in ["vae", "bvae"]:
-        # This does not work although this is how it should be:
-        # KL Divergence computed through re-parameterization
-        # kl_loss = 1 + logvar - th.square(mu) - th.exp(logvar)
-        # kl_loss = th.sum(kl_loss) #th.sum(kl_loss)
-        # kl_loss *= -0.5
-
         # This works since we sum across dimensions, and take sample mean. This works with reconstruction term,
         # where we sum across all dimensions, and use sample mean as well.
         kl_loss = 1 + logvar - th.square(mu) - th.exp(logvar)
-        kl_loss = th.sum(kl_loss, dim=-1) #th.sum(kl_loss)  # Try mean() since torch MSELoss is computed using mean over sum (sample size+dimension)
+        kl_loss = th.sum(kl_loss, dim=-1) #th.sum(kl_loss)
         kl_loss *= -0.5
         kl_loss = th.mean(kl_loss)
-        # kl_loss = 1 + logvar - th.square(mu) - th.exp(logvar)
-        # kl_loss = th.sum(kl_loss) #th.sum(kl_loss)  # Try mean() since torch MSELoss is computed using mean over sum (sample size+dimension)
-        # kl_loss *= -0.5
-        # kl_loss = kl_loss
     else:
         # Assume that there is no KL component.
         kl_loss = 0
@@ -49,21 +38,6 @@ def get_generator_loss(fake):
 
 def get_discriminator_loss(real, fake):
     return -th.mean(th.log(real+1e-8) + th.log(1-fake+1e-8))
-
-def getKL(args):
-    mu, logvar = args
-    kl_loss = 1 + logvar - th.square(mu) - th.exp(logvar)
-    kl_loss = th.sum(kl_loss, dim=-1)
-    kl_loss *= -0.5
-    kl_loss = th.mean(kl_loss)
-    return kl_loss
-
-
-def getKLloss(p, q):
-    def kl(target, pred):
-        return th.mean(th.sum(target * th.log(target / (pred + 1e-8)), dim=1))
-    loss = kl(p, q)
-    return loss
 
 def getMSEloss(recon, target):
     dims = list(target.size())

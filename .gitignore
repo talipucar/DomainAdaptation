@@ -10,7 +10,7 @@ __pycache__/
 *.pyc
 
 # Data
-#data/*
+data/*
 results/training/ae/model/*
 
 # Byte-compiled / optimized / DLL files
