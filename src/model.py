@@ -8,7 +8,7 @@ extending it to more or less data sources should be trivial.
 
 Two discriminators are used:
     I) A discriminator is used to align corresponding clusters across different data sources in the latent space.
-    Clusters are aligned by using a mixture of gaussians
+    Clusters are aligned by using a mixture of Gaussians
 
     II) A discriminator is used to compare reconstructions at the output of Autoencoder and original samples. This
     is to improve the quality of reconstructions.
@@ -72,8 +72,10 @@ class AEModel:
     """
 
     def __init__(self, options):
-        """
-        :param dict options: Configuration dictionary.
+        """Class to train an autoencoder model with two discriminator for domain adaptation/tranlation/alignment.
+
+        Args:
+            options (dict): Configuration dictionary.
         """
         # Get config
         self.options = options
@@ -104,6 +106,7 @@ class AEModel:
         self.print_model_summary()
 
     def set_autoencoder(self):
+        """Sets up the autoencoder model, optimizer, and loss"""
         # Instantiate the model for the Autoencoder 
         self.autoencoder = Autoencoder(self.options)
         # Add the model and its name to a list to save, and load in the future
@@ -118,6 +121,7 @@ class AEModel:
         self.summary.update({"recon_loss": [], "kl_loss": []})
 
     def set_aae(self):
+        """Sets up the discriminator models, optimizer, and loss"""
         # Instantiate Discriminators for latent space
         self.discriminator_z = Discriminator(self.options, input_dim=self.options["dims"][-1]+self.options["n_cohorts"])
         # Instantiate Discriminators for data space
@@ -142,21 +146,21 @@ class AEModel:
         self.summary.update({"disc_z_train_acc": [], "disc_z_test_acc": []})
 
     def set_parallelism(self, model):
+        """NOT USED - Sets up parallelism in training."""
         # If we are using GPU, and if there are multiple GPUs, parallelize training
         if th.cuda.is_available() and th.cuda.device_count() > 1:
             print(th.cuda.device_count(), " GPUs will be used!")
             model = th.nn.DataParallel(model)
         return model
 
-    def fit(self, data_loader):
-        """
-        :param list args: List of training and test datasets.
-        :return: None
+    def fit(self, data_loaders):
+        """Fits model to the data
 
-        Fits model to the data
+        Args:
+            data_loaders (list): List of dataloaders for multiple datasets.
         """
         # Get data loaders for three datasets
-        ds1_loader, ds2_loader, ds3_loader = data_loader
+        ds1_loader, ds2_loader, ds3_loader = data_loaders
 
         # Placeholders for record batch losses
         self.loss = {"rloss_b": [], "rloss_e": [], "kl_loss": [], "vloss_e": [], "aae_loss_z": [], "aae_loss_x": []}
@@ -230,6 +234,15 @@ class AEModel:
         loss_df.to_csv(self._loss_path + "/losses.csv")
 
     def validate(self, validation_loader, total_batches):
+        """Computes validation loss.
+
+        Args:
+            validation_loader (): data loader for validation set.
+            total_batches (int): total number of batches in validation set.
+
+        Returns:
+            float: validation loss
+        """
         with th.no_grad():
             # Initialize validation loss
             vloss = 0
@@ -263,6 +276,12 @@ class AEModel:
         return vloss
 
     def update_autoencoder(self, Xdata, dlabels):
+        """Updates autoencoder model.
+
+        Args:
+            Xdata (ndarray): 2D array containing data with float type
+            dlabels (ndarray): 1D array containing data with int type
+        """
         # Prepare input data
         input_data = [Xdata, dlabels] if self.options["conditional"] else Xdata
         # Forward pass on Autoencoder
@@ -281,6 +300,15 @@ class AEModel:
         del recon_loss, total_loss, kl_loss, Xrecon, z_mean, z_logvar
 
     def update_generator_discriminator_z(self, data, retain_graph=True):
+        """Updates encoder and discriminator used for latent space.
+
+        Args:
+            data (list): List of ndarrays
+            retain_graph (bool):
+
+        Returns:
+            None
+        """
         # Get the output dimension of classifier
         num_classes = self.options["n_cohorts"]
         # Get the data: Xbatch: features, clabels=cohort labels, dlabels=domain labels
@@ -346,6 +374,15 @@ class AEModel:
         self.clean_up_memory([disc_loss, gen_loss])
 
     def update_generator_discriminator_x(self, data, retain_graph=True):
+        """Updates decoder and discriminator used for reconstruction space.
+
+        Args:
+            data (list): List of ndarrays
+            retain_graph (bool):
+
+        Returns:
+            None
+        """
         # Get the output dimension of classifier
         num_classes = self.options["n_domains"]
         # Get the data
@@ -401,6 +438,14 @@ class AEModel:
         self.clean_up_memory([disc_loss, gen_loss])
 
     def shuffle_tensors(self, data_list):
+        """Shuffles rows of tensors
+
+        Args:
+            data_list (list): List of tensors
+
+        Returns:
+            tensor:
+        """
         # Shuffle input and domain labels to precent clf from learning a trivial solution.
         random_indexes = th.randperm(3*self.options["batch_size"])
         # Shuffled data
@@ -409,10 +454,12 @@ class AEModel:
         return data_shuffled
 
     def clean_up_memory(self, losses):
+        """Deletes losses with attached graph, and cleans up memory"""
         for loss in losses: del loss
         gc.collect()
 
     def process_batch(self, ds1_dict, ds2_dict, ds3_dict):
+        """Concatenates arrays from different data sources into one, and pushes it to the device"""
         # Process the batch i.e. turning it into a tensor
         Xds1, Xds2, Xds3 = [d['tensor'].to(self.device) for d in [ds1_dict, ds2_dict, ds3_dict]]
         # Get labels
@@ -425,6 +472,7 @@ class AEModel:
         return Xdata, labels, dlabels
 
     def update_log(self, epoch, batch):
+        """Updates the messages displayed during training and evaluation"""
         # For the first epoch, add losses for batches since we still don't have loss for the epoch
         if epoch < 1:
             description = f"Epoch:[{epoch - 1}], Batch:[{batch}], Recon. loss:{self.loss['rloss_b'][-1]:.4f}"
@@ -440,23 +488,18 @@ class AEModel:
         self.train_tqdm.set_description(description)
 
     def set_mode(self, mode="training"):
+        """Sets the mode of the models, either as .train(), or .eval()"""
         for _, model in self.model_dict.items():
             model.train() if mode == "training" else model.eval()
 
     def save_weights(self):
-        """
-        :return: None
-        Used to save weights.
-        """
+        """Used to save weights."""
         for model_name in self.model_dict:
             th.save(self.model_dict[model_name], self._model_path + "/" + model_name + ".pt")
         print("Done with saving models.")
 
     def load_models(self):
-        """
-        :return: None
-        Used to load weights saved at the end of the training.
-        """
+        """Used to load weights saved at the end of the training."""
         for model_name in self.model_dict:
             model = th.load(self._model_path + "/" + model_name + ".pt", map_location=self.device)
             setattr(self, model_name, model.eval())
@@ -464,10 +507,7 @@ class AEModel:
         print("Done with loading models.")
 
     def print_model_summary(self):
-        """
-        :return: None
-        Sanity check to see if the models are constructed correctly.
-        """
+        """Displays model architectures as a sanity check to see if the models are constructed correctly."""
         # Summary of the model
         description = f"{40 * '-'}Summary of the models (an Autoencoder and two Discriminators):{40 * '-'}\n"
         description += f"{34 * '='}{self.options['model_mode'].upper().replace('_', ' ')} Model{34 * '='}\n"
@@ -482,6 +522,16 @@ class AEModel:
         print(description)
 
     def _update_model(self, loss, optimizer, retain_graph=True):
+        """Does backprop, and updates the model parameters
+
+        Args:
+            loss ():
+            optimizer ():
+            retain_graph (bool):
+
+        Returns:
+            None
+        """
         # Reset optimizer
         optimizer.zero_grad()
         # Backward propagation to compute gradients
@@ -490,6 +540,7 @@ class AEModel:
         optimizer.step()
 
     def _set_scheduler(self):
+        """Sets a scheduler for learning rate of autoencoder"""
         # Set scheduler (Its use will be optional)
         self.scheduler = th.optim.lr_scheduler.StepLR(self.optimizer_ae, step_size=1, gamma=0.97)
 
@@ -505,20 +556,22 @@ class AEModel:
         self._loss_path = os.path.join(self._results_path, "training", self.options["model_mode"], "loss")
 
     def _adam(self, params, lr=1e-4):
+        """Sets up Adam optimizer using model params"""
         return th.optim.Adam(itertools.chain(*params), lr=lr, betas=(0.9, 0.999))
 
     def _tensor(self, data):
+        """Turns numpy arrays to torch tensors"""
         return th.from_numpy(data).to(self.device).float()
     
     def one_hot_embedding(self, labels, num_classes):
         """Converts labels to one-hot encoded form.
 
         Args:
-          labels: (LongTensor) class labels, sized [N,].
-          num_classes: (int) number of classes.
+          labels (LongTensor):  class labels, sized [N,].
+          num_classes (int):  number of classes.
 
         Returns:
-          (tensor) encoded labels, sized [N, #classes].
+          None
         """
         y = th.eye(num_classes) 
         return y[labels].to(self.device)
@@ -536,6 +589,14 @@ class AEModel:
         self.domain_labels = self.one_hot_embedding(self.domain_labels, self.options["n_domains"])
 
     def supervised_gaussian_mixture(self, label_indices):
+        """Samples data from the GMM prior
+
+        Args:
+            label_indices (ndarray): 1D array of cluster/class labels
+
+        Returns:
+            ndarray, ndarray: 2D and 1D numpy arrays
+        """
         batchsize = self.options["n_domains"]*self.options["batch_size"]
         ndim = self.options["dims"][-1]
         num_clabels = self.options["n_cohorts"]
@@ -555,6 +616,17 @@ class AEModel:
         return z, label_indices.cpu().numpy()
 
     def gm_sample(self, x, y, label, num_clabels):
+        """
+
+        Args:
+            x (ndarray): 1D array of float numbers
+            y (ndarray): 1D array of float numbers
+            label (ndarray): 1D array of cluster labels
+            num_clabels (int): Number of clusters/classes in a domain
+
+        Returns:
+            ndarray: 2D numpy array
+        """
         shift = 1.4
         r = 2.0 * np.pi / float(num_clabels) * float(label)
         new_x = x * np.cos(r) - y * np.sin(r)
