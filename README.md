@@ -45,10 +45,12 @@ The model consists of an Autoencoder together with two Discriminators, one for l
 
 
 
-The autoencoder is trained to learn shared representation from multiple data sources. 
-A conditional Discriminator is used to align the latent representations of the 
+- The autoencoder is trained to learn shared representation from multiple data sources. 
+
+- A conditional Discriminator is used to align the latent representations of the 
 data sources. Here, class labels in each domain is used to condition the Discriminator. 
-A second conditional Discriminator is used to improve the quality of reconstructions, i.e. the output of the decoder. This discrimminator is 
+
+- A second conditional Discriminator is used to improve the quality of reconstructions, i.e. the output of the decoder. This discriminator is 
 conditioned on the domain labels ( For example, if there are 3 different data sources, they are labeled in one-hot encoded form as 001, 010, 100).
 
 
@@ -56,7 +58,7 @@ Two Autoencoder (AE) models are provided; i) CNN-based AE to be used with image 
 Only one of them can be used at any time and all data sources should be of same kind (or you can modify the code to instantiate two of them).
 
 1) A custom CNN-based Autoencoder model is used to learn representation from images. 
-Its architecture is defined in yaml file of the model ("./config/ae.yaml"). 
+Its architecture is defined in yaml file of the model (```./config/ae.yaml```). 
 
 Example: 
 <pre>
@@ -73,14 +75,14 @@ by modifying it in yaml file. You can add more layers, or change the dimensions 
 Architecture is agnostic to input image size. Use "convolution=true" in model config file if you want to use CNN-based model.
 
 2) A custom fully-connected Autoencoder model is used to learn representation from tabular data. 
-Its architecture is defined in yaml file of the model ("./config/ae.yaml"). 
+Its architecture is defined in yaml file of the model (```./config/ae.yaml```). 
 
 Example:
 <pre>
-dims:                             # Autoencoder architecture - This is for Encoder, and Decoder (in reverse order)
-  - 1024                          # Hidden layer
-  - 512                           # Hidden layer 
-  - 128                           # Bottleneck layer
+dims:        # Autoencoder architecture - This is for Encoder, and Decoder (in reverse order)
+  - 1024     # Hidden layer
+  - 512      # Hidden layer 
+  - 128      # Bottleneck layer
 </pre>
 
 **Note:** You don't have to define input dimension i.e. number of features in the dataset since it is automatically added to the model.
@@ -133,7 +135,7 @@ Run following commands in order to set up the environment:
 ```
 pip install pipenv          # To install pipenv if you don't have it already
 pipenv shell                # To activate virtual env
-pipenv install --skip-lock  # To install required packages. 
+pipenv install --skip-lock  # To install required packages. Torch and Torchvision is commented out. 
 pip install torch==1.5.0+cu101 torchvision==0.6.0+cu101 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 Note that torch and torchvision in Pipfile are commented out and are installed separately since other versions of torch with Python 3.7 
@@ -142,35 +144,35 @@ was not able to detect GPU even if it is available.
 #### Important Note: 
 If you want to use Python 3.8, follow these steps:
 - Change python_version in Pipfile: ```python_version = "3.8"``` 
-- Comment in torch and torchvision in Pipfile (they are commented out)
+- Comment in torch and torchvision in Pipfile (they are commented out in the Pipfile)
 - Install the packages as described above in the first 3 steps.
 
 # Configuration
-Under the "./config/" directory, there are two kinds of yaml files. 
+Under the ```./config/``` directory, there are two kinds of yaml files. 
 
-1) runtime.yaml is a high-level config file, where you define which model to run: 
+1) ```runtime.yaml``` is a high-level config file, where you define which model to run: 
 
-- ae   for autoencoder 
-- vae  for variarional autoencoder (VAE)
-- bvae for Beta-VAE 
+- **ae**   for autoencoder 
+- **vae**  for variarional autoencoder (VAE)
+- **bvae** for Beta-VAE 
 
-For now, only "ae" mode is tested and its corresponding yaml file (ae.yaml) is provided. You need to generate new config 
+For now, only **"ae"** mode is tested and its corresponding yaml file (```ae.yaml```) is provided. You need to generate new config 
 files (vae.yaml, and bvae.yaml) for other modes.
  
-runtime.yaml is also where you define whether you want to track experiments using MLFlow, random seed to use, 
+```runtime.yaml``` is also where you define whether you want to track experiments using MLFlow, random seed to use, 
 whether to use distributed training (not implemented, just a placeholder for now), and paths for data and results.
 
-2) ae.yaml is the model specific configurations. The name of these yaml file need to match to the model_mode defined 
-in runtime.yaml so that the script can find and load the model specific configuration.
+2) ```ae.yaml``` is the model specific configurations. The name of these yaml file need to match to the model_mode defined 
+in ```runtime.yaml``` so that the script can find and load the model specific configuration.
 
 # Training
 Commands for aforementioned two steps as well as for evaluation after training:
 ```
-  I) python 0_train.py  -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Train autoencoder using synthetic datasets provided
- II) python 1_eval.py   -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Evaluations of how aligned all domains are.
+ I) python 0_train.py  -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Train autoencoder using synthetic datasets provided
+II) python 1_eval.py   -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Evaluations of how aligned all domains are.
 ```
 
-You can change the default arguments for datasets under "./utils/arguments.py" so that you don't need to define them when 
+You can change the default arguments for datasets under ```./utils/arguments.py``` so that you don't need to define them when 
 training and evaluation. Currently, ds1, ds2, and ds3 are not defaults, and hence you need to provide them as arguments on 
 the command line.
 
@@ -187,10 +189,10 @@ in all domains are aligned.
 ## Running evaluation script
 Once you have a trained model, you can evaluate the model performance by running:
 ```
- I) python 1_eval.py   -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Evaluations of how aligned all domains are.
+python 1_eval.py   -d1 "ds1" -d2 "ds2" -d3 "ds3"     # Evaluations of how aligned all domains are.
 ```
 
-This will generate scatter plots of samples in latent space using PCA and T-SNE, in which we can observe how domains 
+This will generate scatter plots of samples in latent space using PCA and t-SNE, in which we can observe how domains 
 are aligned in the latent space. It will also report the results of classification task on the command screen.
 
 
@@ -216,8 +218,8 @@ results
 You can save results of evaluations under "evaluation" folder.
 
 ## Results with 3 synthetic datasets
-1) Confirming alignment using visualization obtained using default model and hyper-parameters using 3 synthetic datasets.
-In each figure, the left and right sub-plots are obtained using PCA, and T-SNE respectively.
+1) Confirming alignment obtained by training the model with default hyper-parameters on 3 synthetic datasets.
+In each figure, the left and right sub-plots are 2D projections from PCA, and t-SNE respectively.
 
 ![Img1](./assets/domain_cohorts_inLatentSpace_train.png)
 Figure-1: All four clusters (A, B, C, D) in 3 datasets (domains 1, 2, 3) are aligned in the latent space of the Autoencoder, using **Training set**.
@@ -236,7 +238,7 @@ that are **translated to Domain-3** (i.e. All data -> Encoder -> Translated to D
 
 # Experiment tracking
 MLFlow can be used to track experiments. It is turned off by default, but can be turned on by changing option in 
-runtime config file in "./config/runtime.yaml"
+runtime config file in ```./config/runtime.yaml```
 
 # Summary
 1) Installation of required packages:
