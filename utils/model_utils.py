@@ -40,13 +40,15 @@ class Autoencoder(nn.Module):
         x_recon = self.decoder(latent_conditional)
         return x_recon, latent, mean, logvar
 
+
 class CNNEncoder(nn.Module):
     """
     :param dict options: Generic dictionary to configure the model for training.
     :return: (mean, logvar) if in VAE mode. Else it return (z, z).
-    
+
     Encoder model.
     """
+
     def __init__(self, options):
         super(CNNEncoder, self).__init__()
         # Container to hold layers of the architecture in order
@@ -92,7 +94,7 @@ class CNNEncoder(nn.Module):
         # Global average pooling over spatial dimensions. This is also used as learned representation.
         h = self.global_ave_pool(x)
         # Apply linear layer followed by non-linear activation to decouple final output, z, from representation layer h.
-        z = h #F.relu(self.linear_layer1(h))
+        z = h  # F.relu(self.linear_layer1(h))
         # Apply linear layer for mean
         mean = self.mean(z)
         # Create a placeholder for logvar, which is redundant by default
@@ -121,7 +123,7 @@ class CNNDecoder(nn.Module):
         # Starting image size
         self.img_size = 4
         # First linear layer with shape (bottleneck dimension, output channel size of last conv layer in CNNEncoder)
-        self.first_layer = nn.Linear(input_dim, i*self.img_size*self.img_size)
+        self.first_layer = nn.Linear(input_dim, i * self.img_size * self.img_size)
         # Add deconvolutional layers
         for layer_dims in self.convolution_layers:
             # Get dimensions. Note that i, o are swapped since we are down sampling channels in Decoder
@@ -152,17 +154,19 @@ class CNNDecoder(nn.Module):
         probs = self.probs(h)
         return probs
 
+
 class Encoder(nn.Module):
     """
     :param dict options: Generic dictionary to configure the model for training.
     :return: (mean, logvar) if in VAE mode. Else it return (z, z).
-    
+
     Encoder model.
     """
+
     def __init__(self, options):
         super(Encoder, self).__init__()
         # Deepcopy options to avoid overwriting the original
-        self.options = copy.deepcopy(options)        
+        self.options = copy.deepcopy(options)
         # Forward pass on hidden layers
         self.hidden_layers = HiddenLayers(self.options, network="encoder")
         # Compute the mean i.e. bottleneck in Autoencoder
@@ -181,6 +185,7 @@ class Encoder(nn.Module):
         logvar = self.logvar(h) if self.options["model_mode"] in ["vae", "bvae"] else logvar
         return mean, logvar
 
+
 class Decoder(nn.Module):
     def __init__(self, options):
         super(Decoder, self).__init__()
@@ -194,7 +199,7 @@ class Decoder(nn.Module):
         self.hidden_layers = HiddenLayers(self.options, network="decoder")
         # Compute logits and probabilities
         self.logits = nn.Linear(self.options["dims"][-2], self.options["dims"][-1])
-        # self.probs = nn.Sigmoid()
+        self.probs = nn.Sigmoid()
 
     def forward(self, h):
         # Forward pass on hidden layers
@@ -202,8 +207,9 @@ class Decoder(nn.Module):
         # Compute logits
         logits = self.logits(h)
         # Compute probabilities
-        # probs = self.probs(logits)
-        return logits #probs
+        #         probs = self.probs(logits)
+        return logits
+
 
 class Classifier(nn.Module):
     def __init__(self, options, input_dim=None):
@@ -227,6 +233,7 @@ class Classifier(nn.Module):
         probs = self.probs(logits)
         return probs
 
+
 class Discriminator(nn.Module):
     def __init__(self, options, input_dim=None):
         super(Discriminator, self).__init__()
@@ -234,7 +241,7 @@ class Discriminator(nn.Module):
         self.options = copy.deepcopy(options)
         # Define the input dimension of Discriminator - By default, it is same as the latent dim of Autoencoder
         latent_dim = self.options["conv_dims"][-1] if options["convolution"] else self.options["dims"][-1]
-        latent_dim =latent_dim + self.options["n_cohorts"]
+        latent_dim = latent_dim + self.options["n_cohorts"]
         # If input_dim is defined, use it as input dimension of Discriminator
         input_dim = input_dim or latent_dim
         # Define hidden layers
@@ -275,15 +282,19 @@ class HiddenLayers(nn.Module):
 
         return x
 
+
 class Flatten(nn.Module):
     "Flattens tensor to 2D: (batch_size, feature dim)"
+
     def forward(self, x):
         return x.view(x.shape[0], -1)
+
 
 def global_ave_pool(x):
     """Global Average pooling of convolutional layers over the spatioal dimensions.
     Results in 2D tensor with dimension: (batch_size, number of channels) """
     return th.mean(x, dim=[2, 3])
+
 
 def compute_image_size(args):
     """Computes resulting image size after a convolutional layer
@@ -292,7 +303,7 @@ def compute_image_size(args):
     new_size= size of output image.
     """
     old_size, i, o, k, s, p, d = args
-    new_size = int((old_size+2*p-d*(k-1)-1)//s) + 1
+    new_size = int((old_size + 2 * p - d * (k - 1) - 1) // s) + 1
     return new_size
 
 
@@ -319,7 +330,7 @@ class AddGaussNoise(object):
 
     def __call__(self, tensor):
         rnoise = th.randn(tensor.size()).to(self.device).float()
-        return tensor + rnoise*self.std + self.mean
-    
+        return tensor + rnoise * self.std + self.mean
+
     def __repr__(self):
         return self.__class__.__name__ + "(mean={0}, std={1})".format(self.mean, self.std)

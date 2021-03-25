@@ -1,9 +1,11 @@
 """
 Author: Talip Ucar
 Email: ucabtuc@gmail.com
-Version: 0.1
-Description: Class to train an Autoencoder using multiple datasets with same number of features and 
-to align their latent representations. It is configured such that it expects 3 datasets at the moment. However, 
+Version: 0.2
+        - Added support for unsupervised and semi-supervised training.
+
+Description: Class to train an Autoencoder using multiple datasets with same number of features and
+to align their latent representations. It is configured such that it expects 3 datasets at the moment. However,
 extending it to more or less data sources should be trivial.
 
 Two discriminators are used:
@@ -12,13 +14,14 @@ Two discriminators are used:
 
     II) A discriminator is used to compare reconstructions at the output of Autoencoder and original samples. This
     is to improve the quality of reconstructions.
-    
+
 TODO: Making number of datasets being used a flexible choice rather than fixing it to three.
 
 """
 
 import os
 import gc
+import random
 
 import itertools
 from itertools import cycle
@@ -49,7 +52,7 @@ class AEModel:
                                    |
                                     \_ Discriminator
                      GMM -> z_prior /
-                   
+
     ------------------------------------------------------------
     Autoencoders can be configured as
                         - Autoencoder (ae),
@@ -59,7 +62,7 @@ class AEModel:
     ------------------------------------------------------------
     Autoencoder can have a CNN-based architecture, or fully-connected one. Use "convolution=true" in model config file if
     CNN-based model should be used.
-    
+
     Dictionary:
     clabels = cohort labels, or cluster labels within each domain (data source)
     dlabels = domain labels (labels assigned to each data source)
@@ -107,7 +110,7 @@ class AEModel:
 
     def set_autoencoder(self):
         """Sets up the autoencoder model, optimizer, and loss"""
-        # Instantiate the model for the Autoencoder 
+        # Instantiate the model for the Autoencoder
         self.autoencoder = Autoencoder(self.options)
         # Add the model and its name to a list to save, and load in the future
         self.model_dict.update({"autoencoder": self.autoencoder})
@@ -122,10 +125,14 @@ class AEModel:
 
     def set_aae(self):
         """Sets up the discriminator models, optimizer, and loss"""
+        # Get number of clusters/cohorts
+        num_classes = self.options["n_cohorts"] + 1 if self.options["framework"] in ["semi-supervised"] else \
+        self.options["n_cohorts"]
         # Instantiate Discriminators for latent space
-        self.discriminator_z = Discriminator(self.options, input_dim=self.options["dims"][-1]+self.options["n_cohorts"])
+        self.discriminator_z = Discriminator(self.options, input_dim=self.options["dims"][-1] + num_classes)
         # Instantiate Discriminators for data space
-        self.discriminator_x = Discriminator(self.options, input_dim=self.options["dims"][0]+self.options["n_domains"])
+        self.discriminator_x = Discriminator(self.options,
+                                             input_dim=self.options["dims"][0] + self.options["n_domains"])
         # Add the model and its name to a list to save, and load in the future
         self.model_dict.update({"discriminator_z": self.discriminator_z, "discriminator_x": self.discriminator_x})
         # Assign models to the device
@@ -167,32 +174,32 @@ class AEModel:
 
         # Turn on training mode for each model.
         self.set_mode(mode="training")
-        
+
         # Compute total number of batches per epoch
         self.total_batches = len(ds1_loader.train_loader)
-        
+
         # Start joint training of Autoencoder, and/or classifier
         for epoch in range(self.options["epochs"]):
-            
+
             # Change learning rate if schedular=True
             _ = self.scheduler.step() if self.options["scheduler"] else None
-            
+
             # zip() both data loaders, and cycle the one with smaller dataset to go through all samples of longer one.
             zipped_data_loaders = zip(ds1_loader.train_loader, ds2_loader.train_loader, cycle(ds3_loader.train_loader))
-            
+
             # Attach progress bar to data_loader to check it during training. "leave=True" gives a new line per epoch
             self.train_tqdm = tqdm(enumerate(zipped_data_loaders), total=self.total_batches, leave=True)
-            
+
             # Go through batches
             for i, (ds1_dict, ds2_dict, ds3_dict) in self.train_tqdm:
-                
+
                 # Get features, labels in each dataset, and labels assigned to domains
                 Xdata, labels, dlabels = self.process_batch(ds1_dict, ds2_dict, ds3_dict)
-                
+
                 # 0 - Update Autoencoder
                 self.update_autoencoder(Xdata, dlabels)
-                
-                if self.options["adv_training"]:
+
+                if self.options["adv_training"] and self.options["framework"] in ["supervised", "semi-supervised"]:
                     # Update generator (Encoder) and discriminators in z- and x- space
                     # 1 - In z-space, update generator and discriminator
                     self.update_generator_discriminator_z([Xdata, labels, dlabels])
@@ -207,25 +214,25 @@ class AEModel:
 
                     # 4 - Update generator and discriminator
                     self.update_generator_discriminator_x([Xdata_shuffled, z, dlabels_shuffled])
-                
+
                 # 5 - Update log message using epoch and batch numbers
                 self.update_log(epoch, i)
-                
+
                 # 6 - Clean-up for efficient memory use.
                 gc.collect()
-            
+
             # Validate every nth epoch. n=1 by default
             if epoch % self.options["nth_epoch"] == 0:
                 # Compute total number of batches, assuming all test sets have same number of samples
                 total_val_batches = len(ds1_loader.test_loader)
                 # Zip all test data loaders
-                zipped_val_loaders = zip(ds1_loader.test_loader,ds2_loader.test_loader,ds3_loader.test_loader)
+                zipped_val_loaders = zip(ds1_loader.test_loader, ds2_loader.test_loader, ds3_loader.test_loader)
                 # Compute validation loss
-                _ = self.validate(zipped_val_loaders, total_val_batches) 
-        
-            # Get reconstruction loss for training per epoch
+                _ = self.validate(zipped_val_loaders, total_val_batches)
+
+                # Get reconstruction loss for training per epoch
             self.loss["rloss_e"].append(sum(self.loss["rloss_b"][-self.total_batches:-1]) / self.total_batches)
-            
+
         # Save plot of training and validation losses
         save_loss_plot(self.loss, self._plots_path)
         # Convert loss dictionary to a dataframe
@@ -311,16 +318,18 @@ class AEModel:
         """
         # Get the output dimension of classifier
         num_classes = self.options["n_cohorts"]
+        # Add +1 to num_classes if semi-supervised setting since we have an extra label for unlabeled data points
+        num_classes = num_classes + 1 if self.options["framework"] in ["semi-supervised"] else num_classes
         # Get the data: Xbatch: features, clabels=cohort labels, dlabels=domain labels
         Xbatch, clabels, dlabels = data
         # Sample real samples based on class proportions
-        latent_real, labels_real = self.supervised_gaussian_mixture(clabels)
+        latent_real, labels_real = self.gaussian_mixture(clabels)
         latent_real, labels_real = shuffle(latent_real, labels_real)
         latent_real = th.from_numpy(latent_real).float().to(self.device)
         labels_real = th.from_numpy(labels_real).long().to(self.device)
         # Normalize the noise if samples from posterior (i.e. latent variable) is also normalized.
         latent_real = F.normalize(latent_real, p=2, dim=1) if self.options["normalize"] else latent_real
-        
+
         # 1)----  Start of Discriminator update: Autoencoder in evaluation mode  ------------------------
         self.autoencoder.eval()
         # Forward pass on Autoencoder
@@ -347,7 +356,7 @@ class AEModel:
         disc_loss.backward(retain_graph=retain_graph)
         # Update parameters of discriminator
         self.optimizer_disc_z.step()
-        
+
         # 2)---- Start of Generator update: Autoencoder in train mode  ------------------------
         self.autoencoder.encoder.train()
         # Discriminator in evaluation mode
@@ -389,7 +398,7 @@ class AEModel:
         Xdata, z, dlabels = data
         # Concatenate labels to z to use decoder as conditional decoder
         z_cond = th.cat((z, dlabels.float().view(-1, num_classes)), dim=1)
-        
+
         # 1)----  Start of Discriminator update: Autoencoder in evaluation mode
         self.autoencoder.eval()
         # Forward pass on decoder
@@ -411,7 +420,7 @@ class AEModel:
         disc_loss.backward(retain_graph=retain_graph)
         # Update parameters of discriminator
         self.optimizer_disc_x.step()
-        
+
         # 2)---- Start of Generator update: Autoencoder in train mode
         self.autoencoder.decoder.train()
         # Discriminator in evaluation mode
@@ -447,7 +456,7 @@ class AEModel:
             tensor:
         """
         # Shuffle input and domain labels to precent clf from learning a trivial solution.
-        random_indexes = th.randperm(3*self.options["batch_size"])
+        random_indexes = th.randperm(3 * self.options["batch_size"])
         # Shuffled data
         data_shuffled = [data[random_indexes, :] for data in data_list]
         # Return
@@ -479,9 +488,9 @@ class AEModel:
         # For sub-sequent epochs, display only epoch losses.
         else:
             description = f"Epoch:[{epoch - 1}] training loss:{self.loss['rloss_e'][-1]:.4f}, val loss:{self.loss['vloss_e'][-1]:.4f}"
-        
+
         # Add generator and discriminator losses
-        if self.options["adv_training"]:
+        if self.options["adv_training"] and self.options["framework"] in ["supervised", "semi-supervised"]:
             description += f", Disc-Z loss:{self.loss['aae_loss_z'][-1][0]:.4f}, Gen-Z:{self.loss['aae_loss_z'][-1][1]:.4f}"
             description += f", Disc-X loss:{self.loss['aae_loss_x'][-1][0]:.4f}, Gen-X:{self.loss['aae_loss_x'][-1][1]:.4f}"
         # Update the displayed message
@@ -547,7 +556,7 @@ class AEModel:
     def _set_paths(self):
         """ Sets paths to bse used for saving results at the end of the training"""
         # Top results directory
-        self._results_path = self.options["paths"]["results"]
+        self._results_path = os.path.join(self.options["paths"]["results"], self.options["framework"])
         # Directory to save model
         self._model_path = os.path.join(self._results_path, "training", self.options["model_mode"], "model")
         # Directory to save plots as png files
@@ -562,7 +571,7 @@ class AEModel:
     def _tensor(self, data):
         """Turns numpy arrays to torch tensors"""
         return th.from_numpy(data).to(self.device).float()
-    
+
     def one_hot_embedding(self, labels, num_classes):
         """Converts labels to one-hot encoded form.
 
@@ -573,7 +582,9 @@ class AEModel:
         Returns:
           None
         """
-        y = th.eye(num_classes) 
+        # Generate Identity matrix
+        y = th.eye(num_classes)
+        # Return corresponding one-hot coded labels for each label
         return y[labels].to(self.device)
 
     def set_domain_labels(self):
@@ -588,16 +599,16 @@ class AEModel:
         # Turn them into one-hot embeddings, shape: (3 x batch_size, number of domains)
         self.domain_labels = self.one_hot_embedding(self.domain_labels, self.options["n_domains"])
 
-    def supervised_gaussian_mixture(self, label_indices):
+    def gaussian_mixture(self, clabels):
         """Samples data from the GMM prior
 
         Args:
-            label_indices (ndarray): 1D array of cluster/class labels
+            clabels (ndarray): 1D array of cluster/class labels
 
         Returns:
             ndarray, ndarray: 2D and 1D numpy arrays
         """
-        batchsize = self.options["n_domains"]*self.options["batch_size"]
+        batchsize = self.options["n_domains"] * self.options["batch_size"]
         ndim = self.options["dims"][-1]
         num_clabels = self.options["n_cohorts"]
 
@@ -611,9 +622,9 @@ class AEModel:
         z = np.empty((batchsize, ndim), dtype=np.float32)
         for batch in range(batchsize):
             for zi in range(ndim // 2):
-                z[batch, zi * 2:zi * 2 + 2] = self.gm_sample(x[batch, zi], y[batch, zi], label_indices[batch],
-                                                             num_clabels)
-        return z, label_indices.cpu().numpy()
+                z[batch, zi * 2:zi * 2 + 2] = self.gm_sample(x[batch, zi], y[batch, zi], clabels[batch], num_clabels)
+
+        return z, clabels.cpu().numpy()
 
     def gm_sample(self, x, y, label, num_clabels):
         """
@@ -627,6 +638,11 @@ class AEModel:
         Returns:
             ndarray: 2D numpy array
         """
+        # Overwrite the labels (==n_cohorts) of the unlabeled data points with randomly-sampled labels ([0, n_cohorts-1]) if semi-supervised setting
+        if self.options["framework"] in ["semi-supervised"] and label == num_clabels:
+            # Overwrite the labels of the unlabeled data points with randomly-sampled labels - i.e. uninformative clluster assignment
+            label = np.random.randint(0, self.options["n_cohorts"], 1)
+
         shift = 1.4
         r = 2.0 * np.pi / float(num_clabels) * float(label)
         new_x = x * np.cos(r) - y * np.sin(r)
@@ -634,3 +650,18 @@ class AEModel:
         new_x += shift * np.cos(r)
         new_y += shift * np.sin(r)
         return np.array([new_x, new_y]).reshape((2,))
+
+    def generate_random_labels(self):
+        # Generate random samples using expected number of unique clusters (i.e. cohorts) in the dataset
+        random_labels = np.random.randint(0, self.options["n_cohorts"],
+                                          self.options["n_domains"] * self.options["batch_size"])
+        # Return random labels
+        return random_labels
+
+#     def generate_random_labels(self):
+#         # Generate random samples using expected number of unique clusters (i.e. cohorts) in the dataset
+#         random_labels = np.random.randint(0, self.options["n_cohorts"], self.options["n_domains"]*self.options["batch_size"])
+#         # Convert numpy to torch tensor
+#         random_labels = th.from_numpy(random_labels)
+#         # Move it to the device and return
+#         return random_labels.to(self.device)

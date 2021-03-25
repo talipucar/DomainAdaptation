@@ -7,9 +7,9 @@ conditional: true                 #
 
 # Architecture-related params
 dims:                             # Autoencoder architecture - This is for Encoder, and Decoder is symmetric to Encoder. Note that
-  - 1024                          # Input dimension = number of features is added automatically, so it does not need to be defined here.
-  - 512
-  - 2
+  - 1024                          # Hidden. Input dimension = number of features is added automatically, so it does not need to be defined here.
+  - 512                           # Hidden.
+  - 2                             # Dimension of the bottleneck. Use 2 for visualisation of clusters.
 conv_dims:                        # Architecture for Encoder with convolutional layers
   - [ 1,  64, 4, 2, 1, 1]         # i=input channel, o=output channel, k = kernel, s = stride, p = padding, d = dilation
   - [64,  64, 4, 2, 1, 1]         # [i, o, k, s, p, d]
@@ -29,13 +29,13 @@ beta: 1.0                         # Factor used for Beta-VAE model (Beta >1). Us
 stddev: 1.0                       # Stddev used for sampling during re-parameterization in AE
 
 # p-norm if z is normalised
-normalize: false                   # If True, we do L2 normalization on latent variable
+normalize: false                  # If True, we do L2 normalization on latent variable
 p_norm: 2                         # p-value used for normalization. p=2 for L2 norm, p=1 for L1 norm and so on.
 
 # Parameters for training
 dropout_rate: 0.2                 # Set dropout rate if Dropout is being used
 learning_rate: 0.001              # Learning rate for training
-epochs: 40                        # Number of epochs to use for training
+epochs: 200                        # Number of epochs to use for training
 batch_size: 32                    # Set batch size
 nth_epoch: 5                      # Compute validation loss in every nth_epoch
 scheduler: false                  # If True, turns on scheduler for learning rate.

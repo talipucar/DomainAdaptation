@@ -1,7 +1,12 @@
 """
 Author: Talip Ucar
 Email: ucabtuc@gmail.com
-Version: 0.1
+Version:  0.2
+        - Modified results hirearchy. The results are saved per framework (such as semi-supervised).
+        For example:
+        results > semi-supervised > training  -------> model_mode > model
+                                  > evaluation                    > plots
+                                                                  > loss
 Description: Utility functions
 """
 
@@ -18,68 +23,58 @@ from sklearn.preprocessing import StandardScaler
 from texttable import Texttable
 
 
-
 def set_seed(options):
     seed(options["seed"])
     np.random.seed(options["seed"])
     python_random.seed(options["seed"])
 
-    
+
 def create_dir(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
-        
+
 def set_dirs(config):
     """
     It sets up directory that will be used to load processed_data and src as well as saving results.
-    Directory structure:
-          results -> processed_data: contains processed k-fold processed_data file.
-                  -> src: contains saved src, trained on this database
-                  -> results-> training_plots
+    Directory structure example:
+        results > framework (e.g. semi-supervised) > training  -------> model_mode > model
+                                                   > evaluation                    > plots
+                                                                                   > loss
     :return: None
     """
     # Set main results directory using database name. Exp:  processed_data/dpp19
     paths = config["paths"]
-    # data > processed_data (This is disabled)
-    # processed_data_dir = os.path.join(paths["data"], "processed_data")
-    # results > training
-    training_dir = os.path.join(paths["results"], "training")
-    # results > evaluation
-    evaluation_dir = os.path.join(paths["results"], "evaluation")
-    # results > evaluation > clusters
-    clusters_dir = os.path.join(evaluation_dir, "clusters")
-    # results > evaluation > reconstruction
-    recons_dir = os.path.join(evaluation_dir, "reconstructions")
-    # results > training > model_mode = vae
-    model_mode_dir = os.path.join(training_dir, config["model_mode"])
-    # results > training > model_mode > model
-    training_model_dir = os.path.join(model_mode_dir, "model")
-    # results > training > model_mode > plots
-    training_plot_dir = os.path.join(model_mode_dir, "plots")
-    # results > training > model_mode > loss
-    training_loss_dir = os.path.join(model_mode_dir, "loss")
-    # Create any missing directories
-    # if not os.path.exists(processed_data_dir):
-    #     os.makedirs(processed_data_dir)
-    if not os.path.exists(training_model_dir):
-        os.makedirs(training_model_dir)
-    if not os.path.exists(evaluation_dir):
-        os.makedirs(evaluation_dir)
-    if not os.path.exists(clusters_dir):
-        os.makedirs(clusters_dir)
-    if not os.path.exists(recons_dir):
-        os.makedirs(recons_dir)
-    if not os.path.exists(model_mode_dir):
-        os.makedirs(model_mode_dir)
-    if not os.path.exists(training_model_dir):
-        os.makedirs(training_model_dir)
-    if not os.path.exists(training_plot_dir):
-        os.makedirs(training_plot_dir)
-    if not os.path.exists(training_loss_dir):
-        os.makedirs(training_loss_dir)
+    # results
+    results_dir = make_dir(paths["results"], "")
+    # results > framework
+    results_dir = make_dir(results_dir, config["framework"])
+    # results > framework > training
+    training_dir = make_dir(results_dir, "training")
+    # results > framework > evaluation
+    evaluation_dir = make_dir(results_dir, "evaluation")
+    # results > framework > evaluation > clusters
+    clusters_dir = make_dir(evaluation_dir, "clusters")
+    # results > framework > evaluation > reconstruction
+    recons_dir = make_dir(evaluation_dir, "reconstructions")
+    # results > framework > training > model_mode = vae
+    model_mode_dir = make_dir(training_dir, config["model_mode"])
+    # results > framework > training > model_mode > model
+    training_model_dir = make_dir(model_mode_dir, "model")
+    # results > framework > training > model_mode > plots
+    training_plot_dir = make_dir(model_mode_dir, "plots")
+    # results > framework > training > model_mode > loss
+    training_loss_dir = make_dir(model_mode_dir, "loss")
     # Print a message.
     print("Directories are set.")
+
+
+def make_dir(directory_path, new_folder_name):
+    directory_path = os.path.join(directory_path, new_folder_name)
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
+    return directory_path
+
 
 def get_runtime_and_model_config():
     try:
@@ -95,7 +90,7 @@ def get_runtime_and_model_config():
 def update_config_with_model(config):
     model_config = config["model_config"]
     try:
-        with open("./config/"+model_config+".yaml", "r") as file:
+        with open("./config/" + model_config + ".yaml", "r") as file:
             model_config = yaml.safe_load(file)
     except Exception as e:
         sys.exit("Error reading model config file")
@@ -123,8 +118,8 @@ def run_with_profiler(main_fn, config):
     profiler.disable()
     stats = pstats.Stats(profiler).sort_stats('ncalls')
     stats.print_stats()
-    
-    
+
+
 def tsne(latent):
     """
     :param latent: Embeddings to use.
@@ -171,8 +166,8 @@ def print_config(args):
     # Sort keys
     keys = sorted(args.keys())
     # Initialize table
-    table = Texttable() 
+    table = Texttable()
     # Add rows to the table under two columns ("Parameter", "Value").
-    table.add_rows([["Parameter", "Value"]] +  [[k.replace("_"," ").capitalize(),args[k]] for k in keys])
+    table.add_rows([["Parameter", "Value"]] + [[k.replace("_", " ").capitalize(), args[k]] for k in keys])
     # Print the table.
     print(table.draw())

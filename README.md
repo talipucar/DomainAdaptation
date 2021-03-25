@@ -205,19 +205,21 @@ Results at the end of training is saved under "./results" directory. Results dir
 
 <pre>
 results
-    |-evaluation          # To save the results of evaluation script
-        |-reconstructions # To save the results of inputs and their corresponding reconstruction
-        |-clusters        # To save the results of scatter plots to show clustering in each domain as well as the domain alignment. 
-    |-training 
-         |-model_name  
-             |-model      # To save the models at the end of training.   
-             |-plots      # To save the plots generated during training.   
-             |-loss       # To save csv file containing losses recorded during training.
+   |- Framework (e.g. semi-supervised)
+            |-evaluation          # To save the results of evaluation script
+                |-reconstructions # To save the results of inputs and their corresponding reconstruction
+                |-clusters        # To save the results of scatter plots to show clustering in each domain as well as the domain alignment. 
+            |-training 
+                 |-model_name (e.g. aae, or vae (variational autoencoder))  
+                     |-model      # To save the models at the end of training.   
+                     |-plots      # To save the plots generated during training.   
+                     |-loss       # To save csv file containing losses recorded during training.
 </pre>
 
 You can save results of evaluations under "evaluation" folder.
 
 ## Results with 3 synthetic datasets
+### Supervised Setting: 
 1) Confirming alignment obtained by training the model with default hyper-parameters on 3 synthetic datasets.
 In each figure, the left and right sub-plots are 2D projections from PCA, and t-SNE respectively.
 
@@ -234,6 +236,34 @@ that are **translated to Domain-3** (i.e. All data -> Encoder -> Translated to D
 ![Img4](./assets/domains_cohorts_translations_inLatentSpace_test.png)
 Figure-4: All four clusters (A, B, C, D) in 3 datasets (domains 1, 2, 3)  are aligned in the latent space of the Autoencoder, using **test** samples 
 that are **translated to Domain-3** (i.e. All data -> Encoder -> Translated to Domain-3 via Decoder -> Encoder -> z)
+
+### Semi-Supervised Setting: 
+1) Same setting as in supervised case, except that 50% of data points in each dataset was unlabeled 
+- E1, E2, E3 in the plots below correspond to unlabeled data in three datasets.
+- Data points from E1, E2, E3 are clustered together with correct clusters (A, B, C and D) in all 3 data sources, showing that the model was able to identify the correct cluster of the unlabelled data. (Note that the latent dimension = 2 is used to make visualisation easier - So, PCA and t-SNE are rather unnecessary, and they just shuffle the position of the data points)
+
+
+![Img5a](./assets/semi_domain_cohorts_inLatentSpace_train_with_unlabeled_shown.png)
+![Img5b](./assets/semi_domain_cohorts_inLatentSpace_train.png)
+
+Figure-5: The model is trained with 50% labeled, and 50% unlabeled data. All four clusters (A, B, C, D) in 3 datasets (domains 1, 2, 3) are aligned in the latent space of the Autoencoder, using **Training set**. At the top row, unlabeled data points are shown as Legend E-1,2,3 correspond to unlabeled data points in three datasets, and they are shown to cluster together with their true cluster in each of three datasets. At the bottom row, same unlabeled data points are colored with their actual cluster label, confirming that they were assigned to their true cluster.
+
+
+![Img6a](./assets/semi_domain_cohorts_inLatentSpace_test_with_unlabeled_shown.png)
+![Img6b](./assets/semi_domain_cohorts_inLatentSpace_test.png)
+
+Figure-6: Same setting as above, showing the results on the **Test set**.
+
+### Unsupervised Setting: 
+This setting uses only the Autoencoder portion of the model to learn representations from all three data sources. Thus, the data-alignment is not the goal here.
+
+![Img7](./assets/unsup_domain_cohorts_inLatentSpace_train.png)
+Figure-7: Clustering of data points using unsupervised setting, using **Training set**.
+
+![Img8](./assets/unsup_domain_cohorts_inLatentSpace_train.png)
+Figure-8: Clustering of data points using unsupervised setting, using **Test set**.
+
+
 
 
 # Experiment tracking

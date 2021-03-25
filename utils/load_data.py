@@ -18,12 +18,12 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 
 
-
 class Loader(object):
     """
     Author: Talip Ucar
     Email: ucabtuc@gmail.com
     """
+
     def __init__(self, config, dataset_name, eval_mode=False, kwargs={}):
         """
         :param dict config: Configuration dictionary.
@@ -47,7 +47,7 @@ class Loader(object):
         self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True, **kwargs)
 
     def get_dataset(self, dataset_name, file_path, eval_mode=False):
-        # Create dictionary for loading functions of datasets. 
+        # Create dictionary for loading functions of datasets.
         # If you add a new dataset, add its corresponding dataset class here in the form 'dataset_name': ClassName
         loader_map = {'default_loader': TabularDataset}
         # Get dataset. Check if the dataset has a custom class. If not, then assume a tabular data with labels in the first column
@@ -55,31 +55,38 @@ class Loader(object):
         # Transformation for training dataset. If we are evaluating the model, use ToTensorNormalize.
         train_transform = ToTensorNormalize()
         # Training and Validation datasets
-        train_dataset = dataset(datadir=file_path, dataset_name=dataset_name, mode='train', transform=train_transform)
+        train_dataset = dataset(self.config, datadir=file_path, dataset_name=dataset_name, mode='train',
+                                transform=train_transform)
         # Test dataset
-        test_dataset = dataset(datadir=file_path, dataset_name=dataset_name, mode='test')
+        test_dataset = dataset(self.config, datadir=file_path, dataset_name=dataset_name, mode='test')
         # Return
         return train_dataset, test_dataset
 
 
 class ToTensorNormalize(object):
     """Convert ndarrays in sample to Tensors."""
+
     def __call__(self, sample):
         # Assumes that min-max scaling is done when pre-processing the data (i.e. not here)
         return torch.from_numpy(sample).float()
 
 
 class TabularDataset(Dataset):
-    def __init__(self, datadir, dataset_name, mode='train', transform=ToTensorNormalize()):
+    def __init__(self, config, datadir, dataset_name, mode='train', transform=ToTensorNormalize()):
         """
         Expects two csv files with _tr and _te suffixes for training and test datasets.
         Example: dataset_name_tr.csv, dataset_name_te.csv
         """
+        self.config = config
         self.datadir = datadir
         self.dataset_name = dataset_name
         self.mode = mode
         self.data, self.labels = self._load_data()
         self.transform = transform
+
+        # If self-supervised, divide the labeled data set to labeled and unlabeled subsets.
+        if config["framework"] == "semi-supervised":
+            self.generate_labeled_unlabeled_samples()
 
     def __len__(self):
         return len(self.data)
@@ -87,11 +94,11 @@ class TabularDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.data[idx]
         cluster = self.labels[idx]
-        
+
         if self.transform:
-            # transform the tensor 
+            # transform the tensor
             sample = self.transform(sample)
-        
+
         return {'tensor': sample, 'binary_label': int(cluster)}
 
     def _load_data(self):
@@ -108,4 +115,54 @@ class TabularDataset(Dataset):
         # Check the lowest label number (whether it is 0 or 1). And make sure that it is 0.
         labels = np.abs(labels - 1) if np.min(labels) == 1 else np.abs(labels)
         # Return features, and labels
-        return data[:, 1:], labels
+        return data[:, 1:], labels.astype(int)
+
+    def generate_labeled_unlabeled_samples(self):
+
+        self.n_classes = len(list(set(self.labels)))
+        self.n_extra_classes = 1
+        self.n_labeled_data = int(self.config["percentage_of_labeled_data"] * self.data.shape[0])
+        indices = np.arange(0, self.data.shape[0])
+        np.random.shuffle(indices)
+
+        indices_u, indices_l = [], []
+        counts = [0] * self.n_classes
+
+        # If "percentage_of_labeled_data" < 1, get equal number of labeled data
+        nsamples_per_class = [int(self.n_labeled_data // self.n_classes)] * self.n_classes
+
+        # Get the exact number of labeled data if "percentage_of_labeled_data" == 1
+        if self.config["percentage_of_labeled_data"] == 1.0:
+            list_of_uqniue_labels = list(set(self.labels))
+            for l in list_of_uqniue_labels:
+                nsamples_per_class[l] = sum(self.labels == l)
+
+        for idx in indices:
+            label = self.labels[idx]
+            if counts[label] < nsamples_per_class[label]:
+                counts[label] += 1
+                indices_l.append(idx)
+                continue
+            indices_u.append(idx)
+
+        # To avoid re-factoring the code :), add one data point for unlabeled data
+        # when we are using all labeled data
+        if self.config["percentage_of_labeled_data"] == 1.0: indices_u.append(0)
+
+        self.indices_l = np.asarray(indices_l)
+        self.indices_u = np.asarray(indices_u)
+
+        # Random shuffle the arrays
+        for arr in [self.indices_l, self.indices_u]: np.random.shuffle(arr)
+        # Separate labelled data and unlabelled features
+        data_l = self.data[self.indices_l, :]
+        data_u = self.data[self.indices_u, :]
+        # Separate labelled data and unlabelled labels, and assigned all unlabelled ones to unique number (i.e. =ymax+1==n_cohort)
+        labels_l = self.labels[self.indices_l]
+        labels_u = np.asarray([self.config["n_cohorts"]] * len(self.indices_u))
+        # Combined labelled and unlabelled data
+        self.data = np.concatenate((data_l, data_u), axis=0)
+        self.labels = np.concatenate((labels_l.reshape(-1, 1), labels_u.reshape(-1, 1)), axis=0)
+        # Shuffle the data using previously shuffled indices (no need to reshuffle)
+        self.data = self.data[indices, :]
+        self.labels = self.labels[indices, :]
