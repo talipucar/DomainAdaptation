@@ -35,7 +35,7 @@ class Loader(object):
         batch_size = config["batch_size"]
         # Get config
         self.config = config
-        # Set main results directory using database name. Exp:  processed_data/dpp19
+        # Set main results directory using database name. 
         paths = config["paths"]
         # data > dataset_name
         file_path = os.path.join(paths["data"], dataset_name)
